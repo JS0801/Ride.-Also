@@ -32,7 +32,6 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
                 vendorId: vendorId
             });
 
-            // Pending Approval = 1
             if (String(approvalStatus) !== '1') {
                 log.debug('STOP', 'PO is not Pending Approval');
                 return;
@@ -68,11 +67,10 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
             }
 
             var parentChildJson = getParentChildJson(poLineItems);
-
             log.debug('Parent Child JSON', JSON.stringify(parentChildJson));
 
             if (!hasKeys(parentChildJson)) {
-                log.debug('STOP', 'No parent-child item setup found');
+                log.debug('STOP', 'No parent-child setup found');
                 return;
             }
 
@@ -84,6 +82,7 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
 
             var lineCount = poRec.getLineCount({ sublistId: ITEM_SUBLIST });
             var currentParent = '';
+            var usedChildMap = {};
             var hasChanges = false;
             var i;
 
@@ -107,17 +106,20 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
                     line: i,
                     itemId: lineItemId,
                     rate: lineRate,
-                    currentParent: currentParent
+                    currentParent: currentParent,
+                    usedChildMap: JSON.stringify(usedChildMap)
                 });
 
                 if (!lineItemId) {
                     currentParent = '';
+                    usedChildMap = {};
                     continue;
                 }
 
-                // parent line = item is in json key and rate is 0
+                // parent = rate 0 and item exists in parent JSON
                 if (parentChildJson[lineItemId] && lineRate === 0) {
                     currentParent = lineItemId;
+                    usedChildMap = {}; // reset for new parent block
 
                     clearParentField(poRec, i);
 
@@ -129,10 +131,28 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
                     continue;
                 }
 
-                // if not parent, validate against current parent
+                // child validation
                 if (currentParent) {
-                    // child must be non-zero
-                    if (lineRate > 0 && parentChildJson[currentParent] && parentChildJson[currentParent][lineItemId]) {
+                    var isValidChild = parentChildJson[currentParent] &&
+                                       parentChildJson[currentParent][lineItemId] &&
+                                       lineRate > 0;
+
+                    if (isValidChild) {
+                        // if already used once under same parent, treat as separate item
+                        if (usedChildMap[lineItemId]) {
+                            currentParent = '';
+                            usedChildMap = {};
+                            clearParentField(poRec, i);
+
+                            log.debug('SEPARATE ITEM FOUND', {
+                                line: i,
+                                itemId: lineItemId,
+                                reason: 'Same child repeated under same parent block'
+                            });
+
+                            continue;
+                        }
+
                         poRec.setSublistValue({
                             sublistId: ITEM_SUBLIST,
                             fieldId: PARENT_COLUMN_FIELD,
@@ -140,6 +160,7 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
                             value: currentParent
                         });
 
+                        usedChildMap[lineItemId] = true;
                         hasChanges = true;
 
                         log.debug('CHILD UPDATED', {
@@ -149,22 +170,21 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
                         });
 
                         continue;
-                    } else {
-                        // separate item found or child not matching current parent
-                        currentParent = '';
-                        clearParentField(poRec, i);
-
-                        log.debug('CLEAR CURRENT PARENT', {
-                            line: i,
-                            itemId: lineItemId,
-                            reason: 'Not matching child or separate item'
-                        });
-
-                        continue;
                     }
+
+                    currentParent = '';
+                    usedChildMap = {};
+                    clearParentField(poRec, i);
+
+                    log.debug('CLEAR CURRENT PARENT', {
+                        line: i,
+                        itemId: lineItemId,
+                        reason: 'Not a valid child for current parent'
+                    });
+
+                    continue;
                 }
 
-                // normal separate line
                 clearParentField(poRec, i);
             }
 
