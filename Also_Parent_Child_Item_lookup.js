@@ -6,10 +6,16 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
 
     var ITEM_SUBLIST = 'item';
 
-    // update these ids
+    // update these ids if needed
     var PARENT_COLUMN_FIELD = 'custcol_parent_item';
     var RELATED_COMPONENT_FIELD = 'custitem_related_components';
     var SPECIAL_VENDOR_FIELD = 'custentity_special_order_vendor';
+    var TYPE_COLUMN_FIELD = 'custcol_item_parentcomp';
+
+    // list values
+    var TYPE_PARENT = '1';
+    var TYPE_COMPONENT = '2';
+    var TYPE_ADDON = '3';
 
     function afterSubmit(context) {
         try {
@@ -116,12 +122,14 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
                     continue;
                 }
 
-                // parent = rate 0 and item exists in parent JSON
+                // parent line = item exists in json key and rate = 0
                 if (parentChildJson[lineItemId] && lineRate === 0) {
                     currentParent = lineItemId;
-                    usedChildMap = {}; // reset for new parent block
+                    usedChildMap = {};
 
                     clearParentField(poRec, i);
+                    setTypeField(poRec, i, TYPE_PARENT);
+                    hasChanges = true;
 
                     log.debug('PARENT FOUND', {
                         line: i,
@@ -131,20 +139,22 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
                     continue;
                 }
 
-                // child validation
                 if (currentParent) {
                     var isValidChild = parentChildJson[currentParent] &&
-                                       parentChildJson[currentParent][lineItemId] &&
-                                       lineRate > 0;
+                        parentChildJson[currentParent][lineItemId] &&
+                        lineRate > 0;
 
                     if (isValidChild) {
-                        // if already used once under same parent, treat as separate item
+                        // same child repeated again = separate addon item
                         if (usedChildMap[lineItemId]) {
                             currentParent = '';
                             usedChildMap = {};
-                            clearParentField(poRec, i);
 
-                            log.debug('SEPARATE ITEM FOUND', {
+                            clearParentField(poRec, i);
+                            setTypeField(poRec, i, TYPE_ADDON);
+                            hasChanges = true;
+
+                            log.debug('ADDON FOUND', {
                                 line: i,
                                 itemId: lineItemId,
                                 reason: 'Same child repeated under same parent block'
@@ -160,6 +170,8 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
                             value: currentParent
                         });
 
+                        setTypeField(poRec, i, TYPE_COMPONENT);
+
                         usedChildMap[lineItemId] = true;
                         hasChanges = true;
 
@@ -172,11 +184,15 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
                         continue;
                     }
 
+                    // not a valid child for current parent = separate/addon
                     currentParent = '';
                     usedChildMap = {};
-                    clearParentField(poRec, i);
 
-                    log.debug('CLEAR CURRENT PARENT', {
+                    clearParentField(poRec, i);
+                    setTypeField(poRec, i, TYPE_ADDON);
+                    hasChanges = true;
+
+                    log.debug('SEPARATE ITEM FOUND', {
                         line: i,
                         itemId: lineItemId,
                         reason: 'Not a valid child for current parent'
@@ -185,7 +201,10 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
                     continue;
                 }
 
+                // normal separate/addon item
                 clearParentField(poRec, i);
+                setTypeField(poRec, i, TYPE_ADDON);
+                hasChanges = true;
             }
 
             if (hasChanges) {
@@ -292,6 +311,17 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
                 fieldId: PARENT_COLUMN_FIELD,
                 line: line,
                 value: ''
+            });
+        } catch (e) {}
+    }
+
+    function setTypeField(poRec, line, value) {
+        try {
+            poRec.setSublistValue({
+                sublistId: ITEM_SUBLIST,
+                fieldId: TYPE_COLUMN_FIELD,
+                line: line,
+                value: value
             });
         } catch (e) {}
     }
