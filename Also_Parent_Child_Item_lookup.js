@@ -40,7 +40,7 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
 
             if (String(approvalStatus) !== '1') {
                 log.debug('STOP', 'PO is not Pending Approval');
-                return;
+               // return;
             }
 
             if (!vendorId) {
