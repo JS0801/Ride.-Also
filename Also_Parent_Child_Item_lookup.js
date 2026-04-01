@@ -25,9 +25,11 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
             }
 
             var poId = context.newRecord.id;
+            var recType = context.newRecord.type;
             if (!poId) return;
 
-            log.debug('START', 'PO Id: ' + poId);
+            if (recType == 'purchaseorder') {
+              log.debug('START', 'PO Id: ' + poId);
 
             var approvalStatus = context.newRecord.getValue({ fieldId: 'approvalstatus' });
             var vendorId = context.newRecord.getValue({ fieldId: 'entity' });
@@ -65,6 +67,24 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
                 log.debug('STOP', 'Vendor special order checkbox is not checked');
                 return;
             }
+            }
+            else if (recType == 'salesorder') {
+              log.debug('START', 'SO Id: ' + poId);
+
+            var approvalStatus = context.newRecord.getValue({ fieldId: 'orderstatus' });
+
+            log.debug('PO Header', {
+                soId: poId,
+                approvalStatus: approvalStatus
+            });
+
+            if (String(approvalStatus) != 'A') {
+                log.debug('STOP', 'SO is not Pending Approval');
+                return;
+            }
+            }
+
+            
 
             var poLineItems = getPoLineItems(context.newRecord);
             if (!poLineItems.length) {
