@@ -101,7 +101,7 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
             }
 
             var poRec = record.load({
-                type: record.Type.PURCHASE_ORDER,
+                type: recType,
                 id: poId,
                 isDynamic: false
             });
